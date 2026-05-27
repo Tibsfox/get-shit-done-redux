@@ -941,6 +941,12 @@ function acquireStateLock(statePath) {
   const maxWaitMs = 30000;
   const startedAt = Date.now();
 
+  // Reuse a single wait buffer across all retries. The value at index 0 stays
+  // 0 (nothing else writes to it), so Atomics.wait still blocks for the full
+  // timeout each call. Hoisting avoids per-retry SharedArrayBuffer + Int32Array
+  // allocation under lock contention. (#316)
+  const waitBuf = new Int32Array(new SharedArrayBuffer(4));
+
   // eslint-disable-next-line no-constant-condition
   while (true) {
     try {
@@ -973,7 +979,7 @@ function acquireStateLock(statePath) {
         );
       }
       const jitter = Math.floor(Math.random() * 50);
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, retryDelay + jitter);
+      Atomics.wait(waitBuf, 0, 0, retryDelay + jitter);
     }
   }
 }
