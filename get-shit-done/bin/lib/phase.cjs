@@ -525,9 +525,13 @@ function cmdPhasePlanIndex(cwd, phase, raw) {
     }
   }
 
+  // Head-index dequeue avoids the O(n) reindex cost of Array.shift() on each
+  // pop; behavior is identical (same dequeue order, same cycle detection via
+  // visited counter), but traversal is O(V+E) instead of O(V*(V+E)). (#307)
   let visited = 0;
-  while (queue.length > 0) {
-    const cur = queue.shift();
+  let head = 0;
+  while (head < queue.length) {
+    const cur = queue[head++];
     visited++;
     const curLevel = level.get(cur);
     for (const dep of (adj.get(cur) ?? [])) {
