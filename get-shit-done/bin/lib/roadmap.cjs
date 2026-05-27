@@ -572,7 +572,13 @@ function cmdRoadmapAnnotateDependencies(cwd, phaseNum, raw) {
 
     if (listLines.length === 0) return;
 
-    // Build wave-annotated plan list
+    // Build wave-annotated plan list. Precompute a planId → planEntry index so
+    // the per-line lookup is O(1) instead of `planData.find(...)` (O(P) per
+    // line, O(L*P) total). Typical L and P are both small, so the wall-time
+    // win is negligible — this is a correctness-of-data-structure fix more
+    // than a measurable speedup. (#314)
+    const planById = new Map(planData.map(p => [p.planId, p]));
+
     const linesByWave = new Map();
     for (const line of listLines) {
       // Match plan ID from line: "- [ ] 01-01-PLAN.md — ..." or "- [ ] 01-01: ..."
@@ -586,7 +592,7 @@ function cmdRoadmapAnnotateDependencies(cwd, phaseNum, raw) {
       // (e.g. `.invalid-PLAN.md`) would silently default to wave 1 — defensively
       // skip the line instead so corrupted ROADMAP entries don't corrupt wave layout.
       if (planId && !/^\w[\w.-]*$/.test(planId)) continue;
-      const planEntry = planId ? planData.find(p => p.planId === planId) : null;
+      const planEntry = planId ? planById.get(planId) || null : null;
       const wave = planEntry ? planEntry.wave : 1;
       if (!linesByWave.has(wave)) linesByWave.set(wave, []);
       linesByWave.get(wave).push(line);
