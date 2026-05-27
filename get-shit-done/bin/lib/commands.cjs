@@ -382,11 +382,25 @@ function cmdCommitToSubrepo(cwd, message, files, raw) {
     error('--files required for commit-to-subrepo');
   }
 
-  // Group files by sub-repo prefix
+  // Group files by sub-repo prefix using a first-segment bucket index. The
+  // prior code did `subRepos.find(...)` inside the file loop, which is
+  // O(F*R) — fine at small scale, but the bucket index drops it to expected
+  // O(F + R) since most file paths share their first segment with at most
+  // one sub-repo. Multi-segment sub-repos (e.g. "vendor/pkg") still resolve
+  // correctly because the bucket key is just the first segment. (#311)
+  const reposByFirstSeg = new Map();
+  for (const repo of subRepos) {
+    const firstSeg = repo.split('/')[0];
+    if (!reposByFirstSeg.has(firstSeg)) reposByFirstSeg.set(firstSeg, []);
+    reposByFirstSeg.get(firstSeg).push(repo);
+  }
+
   const grouped = {};
   const unmatched = [];
   for (const file of files) {
-    const match = subRepos.find(repo => file.startsWith(repo + '/'));
+    const firstSeg = file.split('/')[0];
+    const candidates = reposByFirstSeg.get(firstSeg);
+    const match = candidates ? candidates.find(repo => file.startsWith(repo + '/')) : undefined;
     if (match) {
       if (!grouped[match]) grouped[match] = [];
       grouped[match].push(file);
